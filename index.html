@@ -5,155 +5,194 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Mobil Pong</title>
 <style>
-  html, body {
-    margin: 0;
-    padding: 0;
-    background: #000;
-    height: 100%;
-    overflow: hidden;
-    touch-action: none;
-  }
-  canvas {
-    display: block;
-  }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: black;
+  overflow: hidden;
+  touch-action: none;
+  font-family: Arial, sans-serif;
+}
+canvas { display: block; }
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  color: #0f0;
+  gap: 16px;
+}
+
+button {
+  font-size: 20px;
+  padding: 12px 26px;
+  border: none;
+  border-radius: 12px;
+  background: #0f0;
+  color: #000;
+}
+
+select {
+  font-size: 18px;
+  padding: 8px;
+}
+
+.heart {
+  position: absolute;
+  font-size: 30px;
+  animation: float 1.5s ease-out forwards;
+}
+@keyframes float {
+  0% { opacity:1; transform: translateY(0); }
+  100% { opacity:0; transform: translateY(-80px); }
+}
 </style>
 </head>
 <body>
 
-<canvas id="game"></canvas>
+<canvas id="c"></canvas>
+
+<div id="overlay">
+  <h1 id="msg">Zorluk Seç</h1>
+  <select id="difficulty">
+    <option value="easy">Kolay</option>
+    <option value="medium" selected>Orta</option>
+    <option value="hard">Zor</option>
+  </select>
+  <button onclick="startGame()">Başla</button>
+</div>
 
 <script>
-const canvas = document.getElementById("game");
+const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-// ekran boyutuna tam otur
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
-}
-resize();
-window.addEventListener("resize", resize);
+const overlay = document.getElementById("overlay");
+const msg = document.getElementById("msg");
+const diffSelect = document.getElementById("difficulty");
 
-const paddleH = 120;
+const paddleH = 100;
 const paddleW = 12;
+const ballR = 8;
 
+let playerY, aiY;
+let ballX, ballY, ballVX, ballVY;
 let lives = 3;
+let running = false;
 
-let player = {
-  x: 20,
-  y: canvas.height / 2 - paddleH / 2
-};
+let aiSpeed = 0.05;
+let aiError = 0.9;
 
-let ai = {
-  x: () => canvas.width - paddleW - 20,
-  y: canvas.height / 2 - paddleH / 2
-};
+const hitSound = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
+const scoreSound = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
 
-let ball = {
-  x: canvas.width / 2,
-  y: canvas.height / 2,
-  r: 8,
-  speed: 6,
-  vx: 6,
-  vy: 3
-};
-
-function resetBall(dir = 1) {
-  ball.x = canvas.width / 2;
-  ball.y = canvas.height / 2;
-  ball.speed = 6;
-  ball.vx = dir * 6;
-  ball.vy = Math.random() * 4 - 2;
-}
-
-// mobil + mouse kontrol
 canvas.addEventListener("touchmove", e => {
   e.preventDefault();
-  const rect = canvas.getBoundingClientRect();
-  player.y = e.touches[0].clientY - rect.top - paddleH / 2;
-}, { passive: false });
+  playerY = e.touches[0].clientY - paddleH / 2;
+}, { passive:false });
 
-canvas.addEventListener("mousemove", e => {
-  const rect = canvas.getBoundingClientRect();
-  player.y = e.clientY - rect.top - paddleH / 2;
-});
+function startGame() {
+  const d = diffSelect.value;
+  if (d === "easy") { aiSpeed = 0.035; aiError = 0.85; }
+  if (d === "medium") { aiSpeed = 0.05; aiError = 0.9; }
+  if (d === "hard") { aiSpeed = 0.075; aiError = 0.97; }
 
-function collision(p) {
-  return (
-    ball.x - ball.r < p.x + paddleW &&
-    ball.x + ball.r > p.x &&
-    ball.y + ball.r > p.y &&
-    ball.y - ball.r < p.y + paddleH
-  );
+  lives = 3;
+  running = true;
+  overlay.style.display = "none";
+  resetBall(1);
+}
+
+function resetBall(dir) {
+  playerY = canvas.height/2 - paddleH/2;
+  aiY = canvas.height/2 - paddleH/2;
+  ballX = canvas.width/2;
+  ballY = canvas.height/2;
+  ballVX = dir * 5;
+  ballVY = Math.random()*4 - 2;
+}
+
+function heartBurst() {
+  for (let i=0;i<10;i++) {
+    const h = document.createElement("div");
+    h.className = "heart";
+    h.textContent = "❤️";
+    h.style.left = Math.random()*canvas.width+"px";
+    h.style.top = canvas.height/2+"px";
+    document.body.appendChild(h);
+    setTimeout(()=>h.remove(),1500);
+  }
 }
 
 function update() {
-  // sınırlar
-  player.y = Math.max(0, Math.min(canvas.height - paddleH, player.y));
+  if (!running) return;
 
-  // AI (zor ama adil)
-  let target = ball.y - paddleH / 2;
-  ai.y += (target - ai.y) * 0.12;
-  ai.y = Math.max(0, Math.min(canvas.height - paddleH, ai.y));
+  playerY = Math.max(0, Math.min(canvas.height - paddleH, playerY));
 
-  // top hareket
-  ball.x += ball.vx;
-  ball.y += ball.vy;
+  if (Math.random() < aiError) {
+    aiY += (ballY - (aiY + paddleH/2)) * aiSpeed;
+  }
+  aiY = Math.max(0, Math.min(canvas.height - paddleH, aiY));
 
-  if (ball.y < ball.r || ball.y > canvas.height - ball.r) {
-    ball.vy *= -1;
+  ballX += ballVX;
+  ballY += ballVY;
+
+  if (ballY < ballR || ballY > canvas.height-ballR) ballVY *= -1;
+
+  if (ballX < 20+paddleW && ballY > playerY && ballY < playerY+paddleH) {
+    ballVX = Math.abs(ballVX);
+    hitSound.play();
+    navigator.vibrate?.(30);
   }
 
-  if (collision(player)) {
-    let hit = (ball.y - (player.y + paddleH / 2)) / (paddleH / 2);
-    ball.vx = Math.abs(ball.vx);
-    ball.vy = hit * 7;
-    ball.speed += 0.4;
+  if (ballX > canvas.width-20-paddleW && ballY > aiY && ballY < aiY+paddleH) {
+    ballVX = -Math.abs(ballVX);
+    hitSound.play();
   }
 
-  if (collision({ x: ai.x(), y: ai.y })) {
-    let hit = (ball.y - (ai.y + paddleH / 2)) / (paddleH / 2);
-    ball.vx = -Math.abs(ball.vx);
-    ball.vy = hit * 7;
-    ball.speed += 0.4;
-  }
-
-  ball.vx = Math.sign(ball.vx) * ball.speed;
-
-  // gol
-  if (ball.x < 0) {
+  if (ballX < 0) {
     lives--;
+    scoreSound.play();
+    navigator.vibrate?.(100);
     resetBall(1);
   }
 
-  if (ball.x > canvas.width) {
-    resetBall(-1);
+  if (ballX > canvas.width) {
+    running = false;
+    msg.textContent = "Süpersin aşkım ❤️";
+    overlay.style.display = "flex";
+    heartBurst();
   }
 
   if (lives <= 0) {
-    lives = 3;
-    resetBall();
+    running = false;
+    msg.textContent = "Yenildin 😅";
+    overlay.style.display = "flex";
   }
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0,0,canvas.width,canvas.height);
 
-  // paddle'lar
-  ctx.fillStyle = "#0f0";
-  ctx.fillRect(player.x, player.y, paddleW, paddleH);
-  ctx.fillRect(ai.x(), ai.y, paddleW, paddleH);
+  ctx.fillStyle="#0f0";
+  ctx.fillRect(20,playerY,paddleW,paddleH);
+  ctx.fillRect(canvas.width-20-paddleW,aiY,paddleW,paddleH);
 
-  // top
+  ctx.fillStyle="#fff";
   ctx.beginPath();
-  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
-  ctx.fillStyle = "#fff";
+  ctx.arc(ballX,ballY,ballR,0,Math.PI*2);
   ctx.fill();
 
-  // UI
-  ctx.fillStyle = "#0f0";
-  ctx.font = "18px Arial";
-  ctx.fillText("❤️ Can: " + lives, 20, 30);
+  ctx.fillStyle="#0f0";
+  ctx.font="18px Arial";
+  ctx.fillText("❤️ "+lives,20,30);
 }
 
 function loop() {
@@ -161,11 +200,8 @@ function loop() {
   draw();
   requestAnimationFrame(loop);
 }
-
 loop();
 </script>
 
 </body>
 </html>
-
-
