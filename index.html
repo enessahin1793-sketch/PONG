@@ -2,8 +2,8 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Mobil Pong</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pong</title>
 <style>
 html, body {
   margin: 0;
@@ -12,7 +12,6 @@ html, body {
   height: 100%;
   background: black;
   overflow: hidden;
-  touch-action: none;
   font-family: Arial, sans-serif;
 }
 canvas { display: block; }
@@ -20,37 +19,26 @@ canvas { display: block; }
 #overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.75);
+  background: rgba(0,0,0,0.8);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   color: #0f0;
   gap: 16px;
+  z-index: 10;
+}
+
+button, select {
+  font-size: 20px;
+  padding: 10px 22px;
+  border-radius: 10px;
+  border: none;
 }
 
 button {
-  font-size: 20px;
-  padding: 12px 26px;
-  border: none;
-  border-radius: 12px;
   background: #0f0;
   color: #000;
-}
-
-select {
-  font-size: 18px;
-  padding: 8px;
-}
-
-.heart {
-  position: absolute;
-  font-size: 30px;
-  animation: float 1.5s ease-out forwards;
-}
-@keyframes float {
-  0% { opacity:1; transform: translateY(0); }
-  100% { opacity:0; transform: translateY(-80px); }
 }
 </style>
 </head>
@@ -74,6 +62,11 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
+window.addEventListener("resize", () => {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+});
+
 const overlay = document.getElementById("overlay");
 const msg = document.getElementById("msg");
 const diffSelect = document.getElementById("difficulty");
@@ -82,7 +75,9 @@ const paddleH = 100;
 const paddleW = 12;
 const ballR = 8;
 
-let playerY, aiY;
+let playerY = canvas.height/2 - paddleH/2;
+let aiY = canvas.height/2 - paddleH/2;
+
 let ballX, ballY, ballVX, ballVY;
 let lives = 3;
 let running = false;
@@ -90,19 +85,27 @@ let running = false;
 let aiSpeed = 0.05;
 let aiError = 0.9;
 
-const hitSound = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
-const scoreSound = new Audio("data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=");
+/* ===== KONTROLLER ===== */
 
+// MOBİL
 canvas.addEventListener("touchmove", e => {
   e.preventDefault();
   playerY = e.touches[0].clientY - paddleH / 2;
 }, { passive:false });
 
+// PC - MOUSE
+canvas.addEventListener("mousemove", e => {
+  const rect = canvas.getBoundingClientRect();
+  playerY = e.clientY - rect.top - paddleH / 2;
+});
+
+/* ===== OYUN ===== */
+
 function startGame() {
   const d = diffSelect.value;
-  if (d === "easy") { aiSpeed = 0.035; aiError = 0.85; }
-  if (d === "medium") { aiSpeed = 0.05; aiError = 0.9; }
-  if (d === "hard") { aiSpeed = 0.075; aiError = 0.97; }
+  if (d === "easy")   { aiSpeed = 0.035; aiError = 0.80; }
+  if (d === "medium") { aiSpeed = 0.05;  aiError = 0.90; }
+  if (d === "hard")   { aiSpeed = 0.075; aiError = 0.97; }
 
   lives = 3;
   running = true;
@@ -117,18 +120,6 @@ function resetBall(dir) {
   ballY = canvas.height/2;
   ballVX = dir * 5;
   ballVY = Math.random()*4 - 2;
-}
-
-function heartBurst() {
-  for (let i=0;i<10;i++) {
-    const h = document.createElement("div");
-    h.className = "heart";
-    h.textContent = "❤️";
-    h.style.left = Math.random()*canvas.width+"px";
-    h.style.top = canvas.height/2+"px";
-    document.body.appendChild(h);
-    setTimeout(()=>h.remove(),1500);
-  }
 }
 
 function update() {
@@ -146,21 +137,18 @@ function update() {
 
   if (ballY < ballR || ballY > canvas.height-ballR) ballVY *= -1;
 
+  // Oyuncu
   if (ballX < 20+paddleW && ballY > playerY && ballY < playerY+paddleH) {
     ballVX = Math.abs(ballVX);
-    hitSound.play();
-    navigator.vibrate?.(30);
   }
 
+  // AI
   if (ballX > canvas.width-20-paddleW && ballY > aiY && ballY < aiY+paddleH) {
     ballVX = -Math.abs(ballVX);
-    hitSound.play();
   }
 
   if (ballX < 0) {
     lives--;
-    scoreSound.play();
-    navigator.vibrate?.(100);
     resetBall(1);
   }
 
@@ -168,7 +156,6 @@ function update() {
     running = false;
     msg.textContent = "Süpersin aşkım ❤️";
     overlay.style.display = "flex";
-    heartBurst();
   }
 
   if (lives <= 0) {
